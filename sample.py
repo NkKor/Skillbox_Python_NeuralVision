@@ -1,20 +1,69 @@
-def eratosthenus(n):
-    primes = [True] * (n + 1)
-    primes[0] = primes[1] = False
-    for i in range(2, int(n ** 0.5) + 1):
-        if primes[i]:
-            for j in range(i * i, n + 1, i):
-                primes[j] = False
-    return [i for i, is_prime in enumerate(primes) if is_prime]
+import re
 
-max_num = int(input("Введите максимальное число: "))
+def calculate_expression(expression):
+  """Вычисляет выражение, обрабатывая пробелы и поддерживая операции сложения, умножения, вычитания и деления.
 
-if max_num > 1000:
-    print("Максимальное число не должно превышать 1000.")
-    exit()
+  Args:
+    expression: Строка, содержащая выражение.
 
-primes = eratosthenus(max_num)
+  Returns:
+    Результат вычисления выражения или None, если возникла ошибка.
+  """
+  try:
+    # Удаляем лишние пробелы
+    expression = re.sub(r'\s+', '', expression)
+    # Используем eval для вычисления выражения
+    result = eval(expression)
+    return result
+  except Exception as e:
+    # Возвращаем None, если возникла ошибка
+    return None, str(e)
 
-print("Простые числа:")
-for i in range(0, len(primes), 10):
-    print(*primes[i:i + 10])
+def read_expressions(filename):
+  """Читает выражения из файла.
+
+  Args:
+    filename: Имя файла, содержащего выражения.
+
+  Returns:
+    Список строк (выражений).
+  """
+  with open(filename, "r") as file:
+    expressions = file.readlines()
+  return expressions
+
+def write_results(results):
+  """Записывает результаты вычислений в файл.
+
+  Args:
+    results: Список кортежей, где каждый кортеж содержит номер строки и результат вычисления.
+  """
+  with open("results.txt", "w") as file:
+    for i, result in results:
+      file.write(f"{i} {result}\n")
+
+def write_errors(errors):
+  """Записывает ошибки в файл.
+
+  Args:
+    errors: Список кортежей, где каждый кортеж содержит номер строки и описание ошибки.
+  """
+  with open("errors.txt", "w") as file:
+    file.write(f"Количество ошибок: {len(errors)}\n")
+    for i, error in errors:
+      file.write(f"{i} {error}\n")
+
+
+expressions = read_expressions("exprs.txt")
+results = []
+errors = []
+
+for i, expression in enumerate(expressions, 1):
+  expression = expression.strip()
+  result, error = calculate_expression(expression)
+  if result is not None:
+    results.append((i, result))
+  else:
+    errors.append((i, error))
+write_results(results)
+write_errors(errors)
