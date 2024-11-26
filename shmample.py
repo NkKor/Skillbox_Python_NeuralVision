@@ -1,25 +1,52 @@
-def find_lines_with_word(file_path, word):
-    lines_with_word = []
-    
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            for line in file:
-                if word in line:
-                    lines_with_word.append(line.strip())
-    except FileNotFoundError:
-        print(f"Файл {file_path} не найден.")
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
+# файл: calculate_molecular_mass.py
 
-    return lines_with_word
+from functools import reduce
+import re
 
-# Пример использования:
-file_path = r'C:\Users\Z0rg3\OneDrive\Документы\VSCode\Skillbox_Python_NeuralVision\PythonForInginiers\war_and_peace.txt'  # Укажите путь к вашему файлу
-word = 'Андрей'  # Замените на слово, которое хотите найти
-found_lines = find_lines_with_word(file_path, word)
+# Атомные массы элементов
+atomic_masses = {
+    'H': 1.008,
+    'O': 15.999,
+    'S': 32.066,
+    'Na': 22.990,
+    'Cl': 35.453,
+    'K': 39.098
+}
 
-print("Найденные строки:")
-for line in found_lines:
-    print(line)
+# Входные данные
+molecules = ['H2-S-O4', 'H2-O', 'NA-CL', 'H-CL', 'K-CL']
 
+def normalize_molecule(molecule: str):
+    """
+    Приводит обозначения атомов в молекуле к правильному регистру.
+    Например: 'NA-CL' -> 'Na-Cl'
+    """
+    molecule = molecule.upper()
+    components = re.findall(r'[A-Z][A-Z]?', molecule)
+    for component in components:
+        if component.capitalize() in atomic_masses:
+            molecule = molecule.replace(component, component.capitalize())
+    return molecule
 
+def parse_molecule(molecule: str):
+    """Разбивает молекулу на атомы и их количество."""
+    components = re.findall(r'([A-Z][a-z]*)(\d*)', molecule)
+    return [(atom, int(count) if count else 1) for atom, count in components]
+
+def calculate_mass(molecule: str):
+    """Вычисляет молекулярную массу молекулы."""
+    atoms = parse_molecule(molecule)
+    return reduce(lambda total, atom: total + atomic_masses.get(atom[0], 0) * atom[1], atoms, 0)
+
+# Приведение молекул к корректному формату
+normalized_molecules = map(normalize_molecule, molecules)
+
+# Расчет молярных масс для всех молекул
+results = map(lambda mol: (mol, calculate_mass(mol)), normalized_molecules)
+
+# Сортировка по молекулярной массе
+sorted_results = sorted(results, key=lambda x: x[1])
+
+# Вывод результата
+for molecule, mass in sorted_results:
+    print(f"{molecule:<8} {mass:.3f}")

@@ -1,69 +1,79 @@
+# файл: calculator.py
+
+from loguru import logger
 import re
+from datetime import datetime
 
+# Настройка логирования
+logger.add("logs.log", format="{time} | {level} | {message}", level="ERROR")
+
+# Операции
+def add(a, b):
+    return a + b
+
+def subtract(a, b):
+    return a - b
+
+def multiply(a, b):
+    return a * b
+
+def divide(a, b):
+    if b == 0:
+        raise ZeroDivisionError("Деление на ноль")
+    return a / b
+
+# Обработка строки выражения
 def calculate_expression(expression):
-  """Вычисляет выражение, обрабатывая пробелы и поддерживая операции сложения, умножения, вычитания и деления.
+    operators = {
+        '+': add,
+        '-': subtract,
+        '*': multiply,
+        '/': divide
+    }
 
-  Args:
-    expression: Строка, содержащая выражение.
-
-  Returns:
-    Результат вычисления выражения или None, если возникла ошибка.
-  """
-  try:
-    # Удаляем лишние пробелы
+    # Очистка пробелов
     expression = re.sub(r'\s+', '', expression)
-    # Используем eval для вычисления выражения
-    result = eval(expression)
-    return result
-  except Exception as e:
-    # Возвращаем None, если возникла ошибка
-    return None, str(e)
 
-def read_expressions(filename):
-  """Читает выражения из файла.
+    # Парсинг выражения
+    match = re.fullmatch(r'(-?\d*\.?\d+)([+\-*/])(-?\d*\.?\d+)', expression)
+    if not match:
+        raise ValueError(f"Некорректное выражение: '{expression}'")
 
-  Args:
-    filename: Имя файла, содержащего выражения.
+    operand1, operator, operand2 = match.groups()
+    operand1, operand2 = float(operand1), float(operand2)
 
-  Returns:
-    Список строк (выражений).
-  """
-  with open(filename, "r") as file:
-    expressions = file.readlines()
-  return expressions
+    # Выполнение операции
+    if operator in operators:
+        return operators[operator](operand1, operand2)
+    else:
+        raise ValueError(f"Неизвестный оператор: '{operator}'")
 
-def write_results(results):
-  """Записывает результаты вычислений в файл.
+def process_file(input_file, output_file):
+    results = []
+    error_lines = []
 
-  Args:
-    results: Список кортежей, где каждый кортеж содержит номер строки и результат вычисления.
-  """
-  with open("results.txt", "w") as file:
-    for i, result in results:
-      file.write(f"{i} {result}\n")
+    with open(input_file, 'r', encoding='utf-8') as infile:
+        lines = infile.readlines()
 
-def write_errors(errors):
-  """Записывает ошибки в файл.
+    for i, line in enumerate(lines, 1):
+        try:
+            if not line.strip():
+                raise ValueError("Пустая строка")
+            result = calculate_expression(line.strip())
+            results.append(f"{i} {result:.3f}")
+        except Exception as e:
+            logger.error(f"Line #{i}: {e}")
+            error_lines.append((i, str(e)))
 
-  Args:
-    errors: Список кортежей, где каждый кортеж содержит номер строки и описание ошибки.
-  """
-  with open("errors.txt", "w") as file:
-    file.write(f"Количество ошибок: {len(errors)}\n")
-    for i, error in errors:
-      file.write(f"{i} {error}\n")
+    # Запись результатов
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        outfile.write('\n'.join(results) + '\n')
 
-
-expressions = read_expressions("exprs.txt")
-results = []
-errors = []
-
-for i, expression in enumerate(expressions, 1):
-  expression = expression.strip()
-  result, error = calculate_expression(expression)
-  if result is not None:
-    results.append((i, result))
-  else:
-    errors.append((i, error))
-write_results(results)
-write_errors(errors)
+# Основная программа
+if __name__ == "__main__":
+    input_file = "exprs.txt"
+    output_file = "results.txt"
+    
+    # Обработка файла
+    process_file(input_file, output_file)
+    print(f"Результаты сохранены в {output_file}, ошибки записаны в logs.log")
