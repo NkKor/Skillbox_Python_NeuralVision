@@ -1,52 +1,74 @@
-# файл: calculate_molecular_mass.py
+# файл: sports_complex_pandas.py
 
-from functools import reduce
-import re
+import pandas as pd
+from loguru import logger
 
-# Атомные массы элементов
-atomic_masses = {
-    'H': 1.008,
-    'O': 15.999,
-    'S': 32.066,
-    'Na': 22.990,
-    'Cl': 35.453,
-    'K': 39.098
-}
+# Настройка логирования
+logger.add("logs.log", format="{time} | {level} | {message}", level="DEBUG", retention="10 days")
 
-# Входные данные
-molecules = ['H2-S-O4', 'H2-O', 'NA-CL', 'H-CL', 'K-CL']
+def process_activity(file_path):
+    """Обрабатывает файл активности спортсменов с использованием pandas."""
+    try:
+        # Загрузка данных
+        df = pd.read_csv(file_path)
 
-def normalize_molecule(molecule: str):
-    """
-    Приводит обозначения атомов в молекуле к правильному регистру.
-    Например: 'NA-CL' -> 'Na-Cl'
-    """
-    molecule = molecule.upper()
-    components = re.findall(r'[A-Z][A-Z]?', molecule)
-    for component in components:
-        if component.capitalize() in atomic_masses:
-            molecule = molecule.replace(component, component.capitalize())
-    return molecule
+        # Преобразование столбца даты в datetime с учетом формата DD/MM/YYYY HH:mm:ss
+        df['Date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        if df['Date'].isnull().any():
+            logger.debug("Обнаружены некорректные значения в столбце Date")
+            df = df.dropna(subset=['Date'])  # Удаляем строки с некорректным временем
 
-def parse_molecule(molecule: str):
-    """Разбивает молекулу на атомы и их количество."""
-    components = re.findall(r'([A-Z][a-z]*)(\d*)', molecule)
-    return [(atom, int(count) if count else 1) for atom, count in components]
+        # Сортировка данных
+        df = df.sort_values(by=['Athlete ID', 'Location', 'Date'])
 
-def calculate_mass(molecule: str):
-    """Вычисляет молекулярную массу молекулы."""
-    atoms = parse_molecule(molecule)
-    return reduce(lambda total, atom: total + atomic_masses.get(atom[0], 0) * atom[1], atoms, 0)
+        # Результаты
+        results = []
 
-# Приведение молекул к корректному формату
-normalized_molecules = map(normalize_molecule, molecules)
+        # Группировка данных по Athlete ID и Location
+        grouped = df.groupby(['Athlete ID', 'Location'])
 
-# Расчет молярных масс для всех молекул
-results = map(lambda mol: (mol, calculate_mass(mol)), normalized_molecules)
+        for (athlete_id, location), group in grouped:
+            enter_time = None
 
-# Сортировка по молекулярной массе
-sorted_results = sorted(results, key=lambda x: x[1])
+            for _, row in group.iterrows():
+                action = row['Type']
+                timestamp = row['Date']
 
-# Вывод результата
-for molecule, mass in sorted_results:
-    print(f"{molecule:<8} {mass:.3f}")
+                if action == 'In':
+                    if enter_time is not None:
+                        logger.debug(f"Дублированный вход для атлета {athlete_id} в {location}")
+                    enter_time = timestamp
+                elif action == 'Out':
+                    if enter_time is None:
+                        logger.debug(f"Не зафиксировано время входа атлета {athlete_id} в {location}")
+                        continue
+                    # Вычисляем время пребывания
+                    duration = (timestamp - enter_time).total_seconds() / 60
+                    results.append(f"Атлет {athlete_id} провёл в {location}: {int(duration)} мин.")
+                    enter_time = None  # Сбрасываем время входа
+
+            # Если выход не зафиксирован
+            if enter_time is not None:
+                logger.debug(f"Не зафиксировано время выхода атлета {athlete_id} из {location}")
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Ошибка обработки файла: {e}")
+        return []
+
+def save_results(results, output_file):
+    """Сохраняет результаты в файл."""
+    with open(output_file, 'w', encoding='utf-8') as file:
+        file.write('\n'.join(results) + '\n')
+
+# Основная программа
+if __name__ == "__main__":
+    input_file = "activity.csv"  # Файл с активностями
+    output_file = "results.txt"  # Файл для записи результатов
+
+    # Обработка файла активности
+    results = process_activity(input_file)
+    save_results(results, output_file)
+
+    print(f"Результаты сохранены в {output_file}, ошибки записаны в logs.log")
