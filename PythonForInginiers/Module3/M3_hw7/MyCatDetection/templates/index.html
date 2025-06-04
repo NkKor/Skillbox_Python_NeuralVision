@@ -1,201 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Детекция кошки с YOLOv8</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        .dropzone {
-            border: 2px dashed #94a3b8;
-            transition: all 0.3s;
-        }
-        .dropzone-active {
-            border-color: #4f46e5;
-            background-color: #e0e7ff;
-        }
-        canvas {
-            max-width: 100%;
-            height: auto;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .animate-spin-custom {
-            animation: spin 1s linear infinite;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Cat Detection</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50 min-h-screen">
-    <div class="container mx-auto px-4 py-8">
-        <div class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Детекция кошки</h1>
-            <p class="text-lg text-gray-600">Загрузите изображение для детекции моей кошки с YOLOv8</p>
-        </div>
-        <div class="max-w-3xl mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6">
-            <div id="uploadContainer" class="mb-6">
-                <div id="dropzone" class="dropzone p-10 text-center rounded-lg cursor-pointer">
-                    <div class="flex flex-col items-center justify-center space-y-3">
-                        <i class="fas fa-cloud-upload-alt text-4xl text-indigo-500"></i>
-                        <p class="text-gray-600">Перетащите изображение сюда или кликните для выбора</p>
-                        <input id="uploadInput" type="file" class="hidden" accept="image/*" />
-                        <button id="uploadBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded transition">
-                            Выбрать изображение
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div id="loadingSpinner" class="hidden flex justify-center items-center py-12">
-                <div class="animate-spin-custom rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-                <span class="ml-3 text-gray-700">Обнаружение объектов...</span>
-            </div>
-            <div id="resultsContainer" class="hidden">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-semibold text-gray-800">Результаты детекции</h3>
-                    <div id="detectionStats" class="text-sm text-gray-500"></div>
-                </div>
-                <div class="relative">
-                    <img id="detectionImage" class="mx-auto" style="max-width: 800px;">
-                </div>
-                <div id="objectList" class="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2"></div>
-            </div>
-            <div id="errorContainer" class="hidden p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg">
-                <i class="fas fa-exclamation-circle mr-2"></i>
-                <span id="errorMessage"></span>
-            </div>
-        </div>
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col items-center p-8">
+  <h1 class="text-3xl font-bold mb-6">🐾 Cat Detection</h1>
+
+  <form action="/detect" method="post" enctype="multipart/form-data" class="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
+    <label class="block text-sm font-medium text-gray-700 mb-2">Выберите изображение:</label>
+    <input type="file" name="image" accept="image/*" required class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4
+      file:rounded-lg file:border-0 file:text-sm file:font-semibold
+      file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 cursor-pointer mb-4"/>
+
+    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded">
+      Обнаружить кота 🐱
+    </button>
+  </form>
+
+  {% if result_filename %}
+    <div class="mt-6 w-full max-w-xl text-center">
+      <h2 class="text-xl font-semibold mb-4">Результат:</h2>
+      <img src="{{ url_for('uploaded_file', filename=result_filename) }}" alt="Результат детекции"
+           class="rounded shadow-lg border border-gray-300 mx-auto max-w-full"/>
     </div>
-    <script>
-        const uploadInput = document.getElementById('uploadInput');
-        const uploadBtn = document.getElementById('uploadBtn');
-        const dropzone = document.getElementById('dropzone');
-        const resultsContainer = document.getElementById('resultsContainer');
-        const loadingSpinner = document.getElementById('loadingSpinner');
-        const errorContainer = document.getElementById('errorContainer');
-        const detectionImage = document.getElementById('detectionImage');
-        const objectList = document.getElementById('objectList');
-        const detectionStats = document.getElementById('detectionStats');
-
-        uploadBtn.addEventListener('click', () => uploadInput.click());
-        uploadInput.addEventListener('change', handleFileSelect);
-
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropzone.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropzone.addEventListener(eventName, highlight, false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropzone.addEventListener(eventName, unhighlight, false);
-        });
-
-        function highlight() {
-            dropzone.classList.add('dropzone-active');
-        }
-
-        function unhighlight() {
-            dropzone.classList.remove('dropzone-active');
-        }
-
-        dropzone.addEventListener('drop', handleDrop, false);
-
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const file = dt.files[0];
-            if (file && file.type.match('image.*')) {
-                uploadInput.files = dt.files;
-                handleFileSelect({ target: { files: [file] } });
-            }
-        }
-
-        async function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            if (!file.type.match('image.*')) {
-                showError('Пожалуйста, выберите файл изображения (JPEG, PNG и т.д.)');
-                return;
-            }
-
-            resultsContainer.classList.add('hidden');
-            errorContainer.classList.add('hidden');
-            loadingSpinner.classList.remove('hidden');
-
-            try {
-                const data = new FormData();
-                data.append("image_file", file, "image_file");
-
-                const response = await fetch("/detect", {
-                    method: "POST",
-                    body: data
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Ошибка сервера: ${response.status}`);
-                }
-
-                const detectionData = await response.json();
-
-                if (detectionData.error) {
-                    throw new Error(detectionData.error);
-                }
-
-                const resultResponse = await fetch(`/get_result/${file.filename}`);
-                if (resultResponse.ok) {
-                    const resultBlob = await resultResponse.blob();
-                    detectionImage.src = URL.createObjectURL(resultBlob);
-                }
-
-                displayResults(file, detectionData);
-            } catch (error) {
-                console.error('Ошибка детекции:', error);
-                showError('Не удалось обработать изображение: ' + error.message);
-            } finally {
-                loadingSpinner.classList.add('hidden');
-            }
-        }
-
-        function displayResults(file, boxes) {
-            const detectedObjects = {};
-            boxes.forEach(box => {
-                const [x1, y1, x2, y2, confidence, class_id] = box;
-                const className = class_id === 0 ? 'Cat' : 'Unknown'; // Предполагаем, что class_id=0 для 'cat'
-
-                detectedObjects[className] = (detectedObjects[className] || 0) + 1;
-            });
-
-            const totalObjects = boxes.length;
-            detectionStats.textContent = `${totalObjects} объект${totalObjects !== 1 ? 'ов' : ''} обнаружено`;
-            
-            objectList.innerHTML = '';
-            for (const [className, count] of Object.entries(detectedObjects)) {
-                const item = document.createElement('div');
-                item.className = 'bg-gray-100 px-3 py-2 rounded flex items-center justify-between';
-                item.innerHTML = `
-                    <span class="font-medium">${className}</span>
-                    <span class="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full">${count}</span>
-                `;
-                objectList.appendChild(item);
-            }
-
-            resultsContainer.classList.remove('hidden');
-        }
-
-        function showError(message) {
-            errorContainer.classList.remove('hidden');
-            document.getElementById('errorMessage').textContent = message;
-        }
-    </script>
+  {% endif %}
 </body>
 </html>

@@ -1,11 +1,11 @@
 
 # рекомендуемые версии и библиотеки
-!pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-!pip install ultralytics==8.0.196
-!pip install flask waitress opencv-python numpy pillow
+pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install ultralytics==8.0.196
+pip install flask waitress opencv-python numpy pillow
 
 # путь к проекту на google colab
 https://colab.research.google.com/drive/1X4-uDRByLrFpx0FffEHJGsgGYvGxz8ra?usp=sharing
 
 # путь к проекту на github
-
+https://github.com/NkKor/Skillbox_Python_NeuralVision/tree/0e91acc8d0160eba62778d7e9c1cb9368e0c9303/PythonForInginiers/Module3/M3_hw7

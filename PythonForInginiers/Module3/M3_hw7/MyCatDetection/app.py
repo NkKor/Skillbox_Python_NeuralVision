@@ -1,88 +1,59 @@
-from flask import Flask, request, render_template, jsonify, send_file
+from flask import Flask, request, jsonify, send_from_directory, render_template
+import os
+from pathlib import Path
 from waitress import serve
 from ultralytics import YOLO
-import cv2
-import os
-import shutil
-import numpy as np
+import uuid
 from PIL import Image
-import io
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Путь к лучшей модели (локальный путь на Windows)
-MODEL_PATH = "S:\code\vscode\Skillbox_Python_NeuralVision\PythonForInginiers\Module3\M3_hw7\MyCatDetection\models\best.pt"
-model = YOLO(MODEL_PATH)
+# Путь к лучшей модели (S:\code\vscode\Skillbox_Python_NeuralVision\PythonForInginiers\Module3\M3_hw7\MyCatDetection\models) 
+model_path = Path(r"S:\code\vscode\Skillbox_Python_NeuralVision\PythonForInginiers\Module3\M3_hw7\MyCatDetection\models\best.pt")
 
-# Папки для загрузки и результатов
-UPLOAD_FOLDER = 'uploads'
-RESULT_FOLDER = 'results'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['RESULT_FOLDER'] = RESULT_FOLDER
+UPLOAD_FOLDER = r"S:\code\vscode\Skillbox_Python_NeuralVision\PythonForInginiers\Module3\M3_hw7\MyCatDetection\uploads"
+RESULT_FOLDER = r"S:\code\vscode\Skillbox_Python_NeuralVision\PythonForInginiers\Module3\M3_hw7\MyCatDetection\results"
 
-# Уровень уверенности для детекции
-CONFIDENCE_THRESHOLD = 0.75
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(RESULT_FOLDER, exist_ok=True)
 
-# Главная страница
+# Загрузка модели YOLOv8
+model = YOLO(model_path)
+
+UPLOAD_FOLDER = '/results'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 @app.route('/')
 def index():
-    # Очистка папок uploads и results при загрузке страницы
-    for folder in [UPLOAD_FOLDER, RESULT_FOLDER]:
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
-        os.makedirs(folder, exist_ok=True)
-    return render_template('index.html')
+    return render_template('index.html', result_filename=None)
 
-# Обработка загрузки изображения и детекции (JSON-ответ для фронтенда)
 @app.route('/detect', methods=['POST'])
-def detect_objects():
-    try:
-        if 'image_file' not in request.files:
-            return jsonify({'error': 'No image file provided'}), 400
-        file = request.files['image_file']
-        if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
+def detect():
+    if 'image' not in request.files:
+        return 'No file part', 400
+    file = request.files['image']
+    if file.filename == '':
+        return 'No selected file', 400
 
-        # Сохранение загруженного файла
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(file_path)
+    filename = f"{uuid.uuid4().hex}.jpg"
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    image = Image.open(file.stream)
+    results = model(image)
+    result_image = results[0].plot()
+    result_image = Image.fromarray(result_image)
+    result_image.save(filepath)
 
-        # Выполнение детекции
-        results = model.predict(source=file_path, conf=CONFIDENCE_THRESHOLD, save=False)
+    return render_template('index.html', result_filename=filename)
 
-        # Форматирование результатов в bounding box'ы
-        boxes = []
-        for result in results:
-            for box in result.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                confidence = box.conf[0].item()
-                class_id = int(box.cls[0].item()) if box.cls.numel() > 0 else 0
-                boxes.append([x1, y1, x2, y2, confidence, class_id])
-
-        # Рисование bounding box'ов на изображении для скачивания
-        img = cv2.imread(file_path)
-        for box in boxes:
-            x1, y1, x2, y2, confidence, class_id = box
-            label = f"Cat: {confidence:.2f}"
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-        # Сохранение результата
-        result_path = os.path.join(app.config['RESULT_FOLDER'], f"result_{file.filename}")
-        cv2.imwrite(result_path, img)
-
-        return jsonify(boxes)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# Возвращение обработанного изображения
-@app.route('/get_result/<filename>')
-def get_result(filename):
-    result_path = os.path.join(app.config['RESULT_FOLDER'], f"result_{filename}")
-    if os.path.exists(result_path):
-        return send_file(result_path, mimetype='image/jpeg')
-    return "Результат не найден", 404
+@app.route('/static/results/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 if __name__ == '__main__':
-    print("Запуск сервера на порту 8000...")
-    serve(app, host='127.0.0.1', port=8000)
+    from waitress import serve
+    print("Сервер запущен на http://localhost:8000")
+    serve(app, host='0.0.0.0', port=8000)
