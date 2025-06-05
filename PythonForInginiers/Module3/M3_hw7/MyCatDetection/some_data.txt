@@ -9,3 +9,13 @@ https://colab.research.google.com/drive/1X4-uDRByLrFpx0FffEHJGsgGYvGxz8ra?usp=sh
 
 # путь к проекту на github
 https://github.com/NkKor/Skillbox_Python_NeuralVision/tree/0e91acc8d0160eba62778d7e9c1cb9368e0c9303/PythonForInginiers/Module3/M3_hw7
+
+
+# путь к датасету
+!pip install roboflow
+
+from roboflow import Roboflow
+rf = Roboflow(api_key="v1Z3cR3tV8wyGh4zulTm")
+project = rf.workspace("project-3iyqp").project("my-cat-project")
+version = project.version(3)
+dataset = version.download("yolov8")
